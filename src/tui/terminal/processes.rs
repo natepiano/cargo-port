@@ -526,13 +526,7 @@ mod tests {
         io::stderr().flush()?;
 
         assert!(child.try_wait()?.is_some());
-        assert!(
-            !Command::new("kill")
-                .arg("-0")
-                .arg(format!("-{process_group_id}"))
-                .status()?
-                .success()
-        );
+        assert!(!crate::support::process_group_exists(process_group_id));
         assert!(
             !Command::new("kill")
                 .arg("-0")
