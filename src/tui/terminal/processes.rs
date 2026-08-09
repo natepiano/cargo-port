@@ -350,6 +350,8 @@ pub(super) fn spawn_priority_fetch(app: &App, _: &str, abs_path: &str, name: Opt
 #[cfg(test)]
 mod tests {
     #[cfg(unix)]
+    use std::io::ErrorKind;
+    #[cfg(unix)]
     use std::io::Write as _;
 
     use super::*;
@@ -379,17 +381,39 @@ mod tests {
             )));
         }
         let fields = String::from_utf8(output.stdout)
-            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?
+            .map_err(|error| io::Error::new(ErrorKind::InvalidData, error))?
             .split_whitespace()
             .map(str::parse::<u32>)
             .collect::<Result<Vec<_>, _>>()
-            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+            .map_err(|error| io::Error::new(ErrorKind::InvalidData, error))?;
         match fields.as_slice() {
             [process_group_id, session_id] => Ok((*process_group_id, *session_id)),
             _ => Err(io::Error::other(format!(
                 "unexpected ps identity for process {process_id}: {fields:?}"
             ))),
         }
+    }
+
+    #[cfg(unix)]
+    fn unix_process_group_members(process_group_id: u32) -> io::Result<Vec<String>> {
+        let output = Command::new("ps")
+            .args([
+                "-e", "-o", "pid=", "-o", "ppid=", "-o", "pgid=", "-o", "stat=", "-o", "command=",
+            ])
+            .output()?;
+        if !output.status.success() {
+            return Err(io::Error::other(format!(
+                "ps process listing failed: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            )));
+        }
+        let process_group_id = process_group_id.to_string();
+        Ok(String::from_utf8(output.stdout)
+            .map_err(|error| io::Error::new(ErrorKind::InvalidData, error))?
+            .lines()
+            .filter(|line| line.split_whitespace().nth(2) == Some(process_group_id.as_str()))
+            .map(str::to_string)
+            .collect())
     }
 
     fn pending_example_run(cargo_package_invocation: CargoPackageInvocation) -> PendingExampleRun {
@@ -466,7 +490,7 @@ mod tests {
         let process_group_id = child.id();
         let descendant_process_id = descendant_pid.parse::<u32>().map_err(|error| {
             io::Error::new(
-                io::ErrorKind::InvalidData,
+                ErrorKind::InvalidData,
                 format!("invalid descendant PID `{descendant_pid}`: {error}"),
             )
         })?;
@@ -495,6 +519,11 @@ mod tests {
             "refusing group signal: descendant is outside the child process group"
         );
         state::discard_unverified_owned_process_group(&mut child);
+        let remaining_group_members = unix_process_group_members(process_group_id)?;
+        eprintln!(
+            "process-group diagnostic after cleanup: pgid={process_group_id}; members={remaining_group_members:#?}"
+        );
+        io::stderr().flush()?;
 
         assert!(child.try_wait()?.is_some());
         assert!(
