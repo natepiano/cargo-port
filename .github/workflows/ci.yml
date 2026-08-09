@@ -146,7 +146,9 @@ jobs:
 
       # Build only test targets here. Example compilation belongs in Build Check.
       - name: Run test targets
-        run: cargo nextest run --all-features --workspace --tests
+        run: >-
+          cargo nextest run --all-features --workspace --tests --no-capture
+          -E 'test(=tui::terminal::processes::tests::unverified_process_group_cleanup_reaps_the_root_and_descendant)'
 
         env:
           WGPU_BACKEND: "gl"

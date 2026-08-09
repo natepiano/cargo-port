@@ -349,8 +349,48 @@ pub(super) fn spawn_priority_fetch(app: &App, _: &str, abs_path: &str, name: Opt
 
 #[cfg(test)]
 mod tests {
+    #[cfg(unix)]
+    use std::io::Write as _;
+
     use super::*;
     use crate::tui::panes::BuildMode;
+
+    #[cfg(unix)]
+    fn unix_process_identity(process_id: u32) -> io::Result<(u32, u32)> {
+        let session_column = if cfg!(target_os = "macos") {
+            "sess="
+        } else {
+            "sid="
+        };
+        let output = Command::new("ps")
+            .args([
+                "-o",
+                "pgid=",
+                "-o",
+                session_column,
+                "-p",
+                &process_id.to_string(),
+            ])
+            .output()?;
+        if !output.status.success() {
+            return Err(io::Error::other(format!(
+                "ps failed for process {process_id}: {}",
+                String::from_utf8_lossy(&output.stderr).trim()
+            )));
+        }
+        let fields = String::from_utf8(output.stdout)
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?
+            .split_whitespace()
+            .map(str::parse::<u32>)
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))?;
+        match fields.as_slice() {
+            [process_group_id, session_id] => Ok((*process_group_id, *session_id)),
+            _ => Err(io::Error::other(format!(
+                "unexpected ps identity for process {process_id}: {fields:?}"
+            ))),
+        }
+    }
 
     fn pending_example_run(cargo_package_invocation: CargoPackageInvocation) -> PendingExampleRun {
         PendingExampleRun {
@@ -424,6 +464,36 @@ mod tests {
         let descendant_pid = descendant_pid.trim();
 
         let process_group_id = child.id();
+        let descendant_process_id = descendant_pid.parse::<u32>().map_err(|error| {
+            io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("invalid descendant PID `{descendant_pid}`: {error}"),
+            )
+        })?;
+        let test_process_id = std::process::id();
+        let (test_process_group_id, test_session_id) = unix_process_identity(test_process_id)?;
+        let (child_process_group_id, child_session_id) = unix_process_identity(process_group_id)?;
+        let (descendant_process_group_id, descendant_session_id) =
+            unix_process_identity(descendant_process_id)?;
+        eprintln!(
+            "process-group diagnostic: test pid={test_process_id} pgid={test_process_group_id} \
+             sid={test_session_id}; child pid={process_group_id} pgid={child_process_group_id} \
+             sid={child_session_id}; descendant pid={descendant_process_id} \
+             pgid={descendant_process_group_id} sid={descendant_session_id}"
+        );
+        io::stderr().flush()?;
+        assert_eq!(
+            child_process_group_id, process_group_id,
+            "refusing group signal: child PID is not its process-group ID"
+        );
+        assert_ne!(
+            child_process_group_id, test_process_group_id,
+            "refusing group signal: child shares the test process group"
+        );
+        assert_eq!(
+            descendant_process_group_id, child_process_group_id,
+            "refusing group signal: descendant is outside the child process group"
+        );
         state::discard_unverified_owned_process_group(&mut child);
 
         assert!(child.try_wait()?.is_some());
