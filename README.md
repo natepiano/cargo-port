@@ -1,6 +1,16 @@
 # cargo-port
 
-[![CI](https://github.com/natepiano/cargo-port/actions/workflows/ci.yml/badge.svg)](https://github.com/natepiano/cargo-port/actions/workflows/ci.yml)
+> [!IMPORTANT]
+> **This repository has moved to [natepiano/cargo-liner](https://github.com/natepiano/cargo-liner).**
+>
+> cargo-port is now developed at [`crates/cargo-port`](https://github.com/natepiano/cargo-liner/tree/main/crates/cargo-port)
+> inside the cargo-liner workspace, alongside the `tui_pane` framework it is built on.
+> This repository is archived and read-only. Its full history was grafted into cargo-liner,
+> so every commit and `git blame` line is preserved there.
+>
+> - **Install** — unchanged: `cargo install cargo-port`
+> - **Issues and pull requests** — please open them at [natepiano/cargo-liner](https://github.com/natepiano/cargo-liner/issues)
+
 [![crates.io](https://img.shields.io/crates/v/cargo-port.svg)](https://crates.io/crates/cargo-port)
 [![license](https://img.shields.io/crates/l/cargo-port.svg)](LICENSE-MIT)
 
